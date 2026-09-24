@@ -167,10 +167,18 @@ export function CartDrawer() {
       message += `¿Tienen disponibilidad para procesar mi compra?`
       
       const encodedMessage = encodeURIComponent(message)
-      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
+
+      // Detectamos si el usuario está navegando desde un dispositivo móvil
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
       
-      // Abre WhatsApp
-      window.location.href = whatsappUrl
+      if (isMobile) {
+        // En móviles redirigimos en la misma pestaña con wa.me (evita bloqueos de Safari y abre la app nativa)
+        window.location.href = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`
+      } else {
+        // En PC abrimos WhatsApp Web directamente para evitar que la redirección rompa los emojis
+        const desktopUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`
+        window.open(desktopUrl, '_blank')
+      }
       
       // Limpia el carrito y cierra el panel lateral
       clearCart()
