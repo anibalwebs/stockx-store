@@ -1,10 +1,23 @@
 import { createClient } from '@/lib/supabase/server'
-import { ProductForm } from './ProductForm'
+import { ProductForm } from '../../new/ProductForm'
+import { getProductById } from '../../new/actions'
+import { notFound } from 'next/navigation'
 
-export default async function NewProductPage() {
+interface EditProductPageProps {
+  params: Promise<{ id: string }>
+}
+
+export default async function EditProductPage({ params }: EditProductPageProps) {
+  // Desempaquetamos la promesa params obligatoria en Next.js 15+
+  const { id } = await params
+
   const supabase = await createClient()
+  const product = await getProductById(id)
   
-  // Carga de datos del servidor (Filtrando solo los activos y ordenando alfabéticamente)
+  if (!product) {
+    notFound()
+  }
+
   const { data: categories } = await supabase
     .from('categories')
     .select('id, name')
@@ -22,6 +35,7 @@ export default async function NewProductPage() {
       <ProductForm 
         categories={categories || []} 
         brands={brands || []} 
+        initialData={product} 
       />
     </div>
   )

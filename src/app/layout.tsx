@@ -1,37 +1,25 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-// Ruta corregida con 'b' minúscula:
-import { Navbar } from "@/components/Navbar";
+import { Inter } from 'next/font/google'
+import './globals.css' // Ajusta esta ruta según la ubicación de tu archivo
+import { Toaster } from 'sonner' //
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "StockX Store",
-  description: "Tu tienda exclusiva de zapatillas",
-};
+// Configuramos la fuente Inter (muy usada en paneles modernos)
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans', // Esta variable conecta directamente con tu globals.css
+})
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="es">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Navbar />
+    // Inyectamos la variable de la fuente en la etiqueta html
+    <html lang="es" className={`${inter.variable}`}>
+      <body className="font-sans antialiased bg-background text-foreground min-h-screen flex flex-col">
         {children}
+        <Toaster position="top-center" richColors /> 
       </body>
     </html>
-  );
+  )
 }

@@ -4,22 +4,19 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
-export async function login(formData: FormData) {
+export async function loginWithPin(email: string, pin: string) {
   const supabase = await createClient()
 
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-
+  // Ahora usa el correo que recibe de la interfaz en lugar de uno fijo
   const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
+    email: email,
+    password: pin, 
   })
 
   if (error) {
-    // Si hay error, redirigimos con un mensaje en la URL
-    return redirect('/admin/login?message=Credenciales+incorrectas')
+    return { success: false, error: 'PIN incorrecto' }
   }
 
   revalidatePath('/admin', 'layout')
-  redirect('/admin') // Si es exitoso, entra al panel
+  redirect('/admin')
 }

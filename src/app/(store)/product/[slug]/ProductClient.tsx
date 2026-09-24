@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
+import { useCartStore } from '@/store/cartStore' // Importamos Zustand
 
 // Definimos la forma de los datos que recibiremos
 type ProductClientProps = {
@@ -21,32 +22,45 @@ type ProductClientProps = {
 
 export default function ProductClient({ product }: ProductClientProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [quantity, setQuantity] = useState<number>(1)
+  const [sizeError, setSizeError] = useState<boolean>(false)
+
+  // Extraemos la función para agregar productos de Zustand
+  const addItem = useCartStore((state) => state.addItem)
+
+  // Configuración del máximo permitido por compra
+  const MAX_QUANTITY = 9 
 
   // Extraemos la imagen principal
   const mainImage = product.product_images?.[0]?.image_url || '/placeholder.png'
 
-  // Función para redirigir a WhatsApp
-  const handleWhatsAppOrder = () => {
+  // Función para manejar la selección de talla y limpiar el error si existía
+  const handleSizeSelect = (size: string) => {
+    setSelectedSize(size)
+    setSizeError(false) 
+  }
+
+  // Funciones para sumar y restar cantidad
+  const increment = () => setQuantity(prev => prev < MAX_QUANTITY ? prev + 1 : prev)
+  const decrement = () => setQuantity(prev => prev > 1 ? prev - 1 : prev)
+
+  // Función para agregar al carrito conectada a Zustand
+  const handleAddToCart = () => {
     if (!selectedSize) {
-      alert("Por favor, selecciona una talla primero.")
+      setSizeError(true) 
       return
     }
 
-    // TU NÚMERO DE WHATSAPP AQUÍ (Con código de país, sin el símbolo +)
-    // Ejemplo: 584141234567 (Venezuela) o 573001234567 (Colombia)
-    const phoneNumber = "584120000000" 
-    
-    const priceToPay = product.sale_price || product.base_price
-    
-    // El mensaje pre-armado
-    const message = `¡Hola! Me interesa comprar este producto:\n\n`
-      + `👟 *${product.title}*\n`
-      + `📏 *Talla:* ${selectedSize}\n`
-      + `💵 *Precio:* $${priceToPay}\n\n`
-      + `¿Tienen disponibilidad para envío/entrega?`
-
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank')
+    // Enviamos el producto a la memoria del carrito
+    addItem({
+      id: `${product.title}-${selectedSize}`, // Unimos título y talla por si compran el mismo en diferentes tamaños
+      title: product.title,
+      size: selectedSize,
+      price: product.sale_price || product.base_price,
+      base_price: product.base_price,
+      quantity: quantity,
+      image: mainImage
+    })
   }
 
   return (
@@ -85,17 +99,17 @@ export default function ProductClient({ product }: ProductClientProps) {
             </div>
           </div>
 
+          {/* Selector de Tallas */}
           <div className="space-y-4">
             <h3 className="font-bold text-lg">Selecciona tu talla</h3>
             <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
               {product.product_variants.length > 0 ? (
-                // Ordenar las tallas para que no salgan desordenadas
                 [...product.product_variants]
                   .sort((a, b) => Number(a.size) - Number(b.size))
                   .map((variant) => (
                     <button
                       key={variant.size}
-                      onClick={() => setSelectedSize(variant.size)}
+                      onClick={() => handleSizeSelect(variant.size)}
                       className={`py-3 border rounded-md text-center font-medium transition-all ${
                         selectedSize === variant.size 
                           ? 'bg-black text-white border-black shadow-md' 
@@ -109,21 +123,53 @@ export default function ProductClient({ product }: ProductClientProps) {
                 <p className="text-zinc-500 text-sm col-span-full">No hay tallas registradas para este producto.</p>
               )}
             </div>
+            
+            {/* Mensaje de error HTML (solo aparece si sizeError es true) */}
+            {sizeError && (
+              <p className="text-red-500 text-sm font-semibold animate-pulse mt-2">
+                ⚠️ Debes seleccionar una talla antes de agregar al carrito.
+              </p>
+            )}
           </div>
 
+          {/* Selector de Cantidad */}
+          <div className="space-y-4 pt-4">
+             <h3 className="font-bold text-lg">Cantidad</h3>
+             <div className="flex items-center w-32 border border-zinc-200 rounded-md overflow-hidden bg-white">
+               <button 
+                 onClick={decrement} 
+                 className="w-10 h-10 flex items-center justify-center text-xl text-zinc-600 hover:bg-zinc-100 hover:text-black transition-colors"
+               >
+                 -
+               </button>
+               <span className="flex-1 text-center font-medium select-none">{quantity}</span>
+               <button 
+                 onClick={increment} 
+                 className="w-10 h-10 flex items-center justify-center text-xl text-zinc-600 hover:bg-zinc-100 hover:text-black transition-colors"
+               >
+                 +
+               </button>
+             </div>
+          </div>
+
+          {/* Botón Principal (Agregar al Carrito) */}
           <div className="space-y-4 pt-6 border-t border-zinc-200">
             <Button 
               size="lg" 
-              className="w-full text-lg h-14 bg-green-600 hover:bg-green-700 text-white font-bold"
-              onClick={handleWhatsAppOrder}
+              className="w-full text-lg h-14 bg-black hover:bg-zinc-800 text-white font-bold transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+              onClick={handleAddToCart}
             >
-              Pedir por WhatsApp
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+              Agregar al Carrito
             </Button>
             <p className="text-xs text-center text-zinc-500">
-              Consultarás la disponibilidad directamente con un asesor.
+              Podrás enviar tu pedido directamente por WhatsApp más adelante.
             </p>
           </div>
 
+          {/* Descripción */}
           <div className="space-y-4 pt-6">
             <h3 className="font-bold text-lg">Descripción</h3>
             <p className="text-zinc-600 leading-relaxed whitespace-pre-line">
