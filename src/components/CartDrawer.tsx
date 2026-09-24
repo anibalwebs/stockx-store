@@ -167,10 +167,10 @@ export function CartDrawer() {
       message += `¿Tienen disponibilidad para procesar mi compra?`
       
       const encodedMessage = encodeURIComponent(message)
-      const whatsappUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`
+      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
       
       // Abre WhatsApp
-      window.open(whatsappUrl, '_blank')
+      window.location.href = whatsappUrl
       
       // Limpia el carrito y cierra el panel lateral
       clearCart()
