@@ -4,14 +4,89 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
+// Helper para procesar e insertar las imágenes del producto (Mín. 0, Máx. 4)
+async function processProductImages(supabase: any, productId: string, formData: FormData) {
+  const imagesMetaRaw = formData.get('images_meta') as string | null
+  const imageFiles = formData.getAll('images') as File[]
+
+  if (imagesMetaRaw) {
+    try {
+      const meta = JSON.parse(imagesMetaRaw) as Array<{ type: 'existing' | 'new', url?: string, fileIndex?: number }>
+      const itemsToProcess = meta.slice(0, 4) // Máximo 4 imágenes
+
+      for (let i = 0; i < itemsToProcess.length; i++) {
+        const item = itemsToProcess[i]
+        const isPrimary = (i === 0) // La primera imagen siempre es la principal
+
+        if (item.type === 'existing' && item.url) {
+          await supabase.from('product_images').insert([{
+            product_id: productId,
+            image_url: item.url,
+            is_primary: isPrimary
+          }])
+        } else if (item.type === 'new' && typeof item.fileIndex === 'number') {
+          const file = imageFiles[item.fileIndex]
+          if (file && file.size > 0 && file.name !== 'undefined') {
+            const fileExt = file.name.split('.').pop()
+            const fileName = `${productId}-${Date.now()}-${i}.${fileExt}`
+
+            const { error: uploadError } = await supabase.storage
+              .from('product_images')
+              .upload(fileName, file)
+
+            if (!uploadError) {
+              const { data: publicUrlData } = supabase.storage
+                .from('product_images')
+                .getPublicUrl(fileName)
+
+              await supabase.from('product_images').insert([{
+                product_id: productId,
+                image_url: publicUrlData.publicUrl,
+                is_primary: isPrimary
+              }])
+            } else {
+              console.error("Error al subir la imagen al Storage:", uploadError.message)
+            }
+          }
+        }
+      }
+      return
+    } catch (e) {
+      console.error("Error al procesar meta de imágenes:", e)
+    }
+  }
+
+  // Fallback si no viene metadata específica
+  const validFiles = imageFiles.filter(file => file && file.size > 0 && file.name !== 'undefined').slice(0, 4)
+  for (let i = 0; i < validFiles.length; i++) {
+    const file = validFiles[i]
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${productId}-${Date.now()}-${i}.${fileExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('product_images')
+      .upload(fileName, file)
+
+    if (!uploadError) {
+      const { data: publicUrlData } = supabase.storage.from('product_images').getPublicUrl(fileName)
+      await supabase.from('product_images').insert([{
+        product_id: productId,
+        image_url: publicUrlData.publicUrl,
+        is_primary: i === 0
+      }])
+    } else {
+      console.error("Error al subir la imagen al Storage:", uploadError.message)
+    }
+  }
+}
+
 export async function createProduct(formData: FormData) {
   const supabase = await createClient()
 
-  // 1. Extraer todos los datos
+  // 1. Extraer datos
   const title = formData.get('title') as string
   const base_price = parseFloat(formData.get('base_price') as string)
   
-  // Si hay precio de oferta, lo convertimos a número, si no, queda en null
   const sale_price_str = formData.get('sale_price') as string
   const sale_price = sale_price_str ? parseFloat(sale_price_str) : null
 
@@ -19,17 +94,14 @@ export async function createProduct(formData: FormData) {
   const category_id = formData.get('category_id') as string
   const brand_id = formData.get('brand_id') as string
   
-  // Nuevos campos
   const gender = formData.get('gender') as string
   const product_type = formData.get('product_type') as string
   
-  // Obtener TODAS las tallas seleccionadas (checkboxes)
   const sizes = formData.getAll('sizes') as string[]
-  const imageFile = formData.get('image') as File
 
   const slug = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now()
 
-  // 3. Insertar el Producto Principal con los nuevos datos
+  // 2. Insertar el Producto Principal
   const { data: product, error: productError } = await supabase
     .from('products')
     .insert([{ 
@@ -44,29 +116,15 @@ export async function createProduct(formData: FormData) {
     return
   }
 
-  // 4. Subir la Imagen a Supabase Storage
-  if (imageFile && imageFile.size > 0) {
-    const fileExt = imageFile.name.split('.').pop()
-    const fileName = `${product.id}-${Date.now()}.${fileExt}`
+  // 3. Subir e Insertar las Imágenes (Mín. 0, Máx. 4)
+  await processProductImages(supabase, product.id, formData)
 
-    const { error: uploadError } = await supabase.storage
-      .from('product_images')
-      .upload(fileName, imageFile)
-
-    if (!uploadError) {
-      const { data: publicUrlData } = supabase.storage.from('product_images').getPublicUrl(fileName)
-      await supabase.from('product_images').insert([{ 
-        product_id: product.id, image_url: publicUrlData.publicUrl, is_primary: true 
-      }])
-    }
-  }
-
-  // 5. Crear las Variantes (Ahora usamos is_available en lugar de stock)
+  // 4. Crear las Variantes
   if (sizes.length > 0) {
     const variantsToInsert = sizes.map(size => ({
       product_id: product.id,
       size: size,
-      is_available: true, // Indica que la talla se seleccionó como disponible
+      is_available: true,
       price: sale_price || base_price
     }))
     await supabase.from('product_variants').insert(variantsToInsert)
@@ -75,10 +133,6 @@ export async function createProduct(formData: FormData) {
   revalidatePath('/admin/products')
   redirect('/admin/products')
 }
-
-// ==========================================
-// CONSULTAS DE CATEGORÍAS Y MARCAS ACTIVAS
-// ==========================================
 
 export async function getActiveCategories() {
   const supabase = await createClient()
@@ -114,10 +168,6 @@ export async function getActiveBrands() {
   return data
 }
 
-// ==========================================
-// OTRAS ACCIONES DEL MÓDULO DE PRODUCTOS
-// ==========================================
-
 export async function getProductsList() {
   const supabase = await createClient()
 
@@ -142,13 +192,11 @@ export async function getProductsList() {
 export async function verifyAndUpdateProductStatus(productId: string, isActive: boolean, pin: string) {
   const supabase = await createClient()
 
-  // 1. Obtener usuario autenticado
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || !user.email) {
     return { success: false, error: 'Usuario no autenticado' }
   }
 
-  // 2. Verificar el PIN (contraseña del usuario actual)
   const { error: authError } = await supabase.auth.signInWithPassword({
     email: user.email,
     password: pin,
@@ -171,10 +219,6 @@ export async function verifyAndUpdateProductStatus(productId: string, isActive: 
   revalidatePath('/admin/products')
   return { success: true }
 }
-
-// ==========================================
-// EDICIÓN DE PRODUCTOS
-// ==========================================
 
 export async function getProductById(id: string) {
   const supabase = await createClient()
@@ -200,13 +244,11 @@ export async function getProductById(id: string) {
 export async function updateProduct(productId: string, formData: FormData, pin: string) {
   const supabase = await createClient()
 
-  // 1. Obtener usuario autenticado
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || !user.email) {
     return { success: false, error: 'Usuario no autenticado' }
   }
 
-  // 2. Validar PIN contra Supabase Auth
   const { error: authError } = await supabase.auth.signInWithPassword({
     email: user.email,
     password: pin,
@@ -217,7 +259,6 @@ export async function updateProduct(productId: string, formData: FormData, pin: 
   }
 
   try {
-    // 3. Extraer datos del formulario
     const title = formData.get('title') as string
     const base_price = parseFloat(formData.get('base_price') as string)
     const sale_price_str = formData.get('sale_price') as string
@@ -227,13 +268,12 @@ export async function updateProduct(productId: string, formData: FormData, pin: 
     const brand_id = formData.get('brand_id') as string
     const gender = formData.get('gender') as string
     const product_type = formData.get('product_type') as string
-    const is_active = formData.get('is_active') === 'true' // Control de estado activo/inactivo
+    const is_active = formData.get('is_active') === 'true'
     const sizes = formData.getAll('sizes') as string[]
-    const imageFile = formData.get('image') as File | null
 
     const slug = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now()
 
-    // 4. Actualizar Producto Principal
+    // 1. Actualizar Producto
     const { error: productError } = await supabase
       .from('products')
       .update({ 
@@ -244,26 +284,11 @@ export async function updateProduct(productId: string, formData: FormData, pin: 
 
     if (productError) throw productError
 
-    // 5. Actualizar Imagen (solo si se seleccionó un archivo nuevo)
-    if (imageFile && imageFile.size > 0) {
-      const fileExt = imageFile.name.split('.').pop()
-      const fileName = `${productId}-${Date.now()}.${fileExt}`
+    // 2. Reemplazar Imágenes
+    await supabase.from('product_images').delete().eq('product_id', productId)
+    await processProductImages(supabase, productId, formData)
 
-      const { error: uploadError } = await supabase.storage
-        .from('product_images')
-        .upload(fileName, imageFile)
-
-      if (!uploadError) {
-        const { data: publicUrlData } = supabase.storage.from('product_images').getPublicUrl(fileName)
-        
-        await supabase.from('product_images').delete().eq('product_id', productId)
-        await supabase.from('product_images').insert([{ 
-          product_id: productId, image_url: publicUrlData.publicUrl, is_primary: true 
-        }])
-      }
-    }
-
-    // 6. Actualizar Variantes (Tallas)
+    // 3. Actualizar Variantes (Tallas)
     await supabase.from('product_variants').delete().eq('product_id', productId)
     
     if (sizes.length > 0) {
@@ -282,5 +307,56 @@ export async function updateProduct(productId: string, formData: FormData, pin: 
   } catch (error: any) {
     console.error("Error al actualizar:", error)
     return { success: false, error: 'Ocurrió un error al guardar los cambios.' }
+  }
+}
+
+export async function deleteProduct(productId: string, pin: string) {
+  const supabase = await createClient()
+
+  // 1. Validar usuario
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || !user.email) {
+    return { success: false, error: 'Usuario no autenticado' }
+  }
+
+  // 2. Validar PIN
+  const { error: authError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: pin,
+  })
+
+  if (authError) {
+    return { success: false, error: 'PIN incorrecto' }
+  }
+
+  try {
+    // 3. (Opcional pero recomendado) Eliminar imágenes del Storage
+    const { data: images } = await supabase
+      .from('product_images')
+      .select('image_url')
+      .eq('product_id', productId)
+      
+    if (images && images.length > 0) {
+      const fileNames = images.map(img => {
+        const urlParts = img.image_url.split('/')
+        return urlParts[urlParts.length - 1]
+      })
+      await supabase.storage.from('product_images').remove(fileNames)
+    }
+
+    // 4. Eliminar registros de la BD (Si no tienes ON DELETE CASCADE configurado)
+    await supabase.from('product_images').delete().eq('product_id', productId)
+    await supabase.from('product_variants').delete().eq('product_id', productId)
+    
+    // 5. Eliminar el producto
+    const { error: deleteError } = await supabase.from('products').delete().eq('id', productId)
+    if (deleteError) throw deleteError
+
+    revalidatePath('/admin/products')
+    return { success: true }
+
+  } catch (error: any) {
+    console.error("Error al eliminar producto:", error)
+    return { success: false, error: 'Ocurrió un error al eliminar el producto.' }
   }
 }

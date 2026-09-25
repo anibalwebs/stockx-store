@@ -136,7 +136,7 @@ export function CartDrawer() {
       toast.success("¡Pedido registrado exitosamente!")
 
       const shortId = orderResult.shortId
-      const phoneNumber = "584220384401"
+      const phoneNumber = "584244601480"
       
       let message = `¡Hola! 👋 Quiero realizar el pedido *#${shortId}*:\n\n`
       
@@ -201,7 +201,7 @@ export function CartDrawer() {
   const paymentOptions = [
     { value: 'Pago móvil', label: 'Pago móvil', icon: <PhoneIcon /> },
     { value: '($) Efectivo', label: '($) Efectivo', icon: <CashIcon /> },
-    { value: 'Cashea Online', label: 'Cashea Online', icon: <CasheaIcon /> },
+    { value: 'Cashea', label: 'Cashea', icon: <CasheaIcon /> },
     { value: 'Binance', label: 'Binance', icon: <BinanceIcon /> }
   ]
 

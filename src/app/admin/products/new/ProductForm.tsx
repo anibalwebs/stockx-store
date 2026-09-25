@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createProduct, updateProduct } from './actions'
+import { useState, useEffect, useRef } from 'react'
+import { createProduct, updateProduct, deleteProduct } from './actions'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { 
   Package, DollarSign, Tag, Shirt, Ruler, 
-  ImageIcon, FileText, Info, ArrowLeft, LayoutList, AlertCircle, X, Delete, Eye
+  ImageIcon, FileText, Info, ArrowLeft, LayoutList, AlertCircle, X, Delete, Eye, Plus, Star, Trash2
 } from 'lucide-react'
 
 const sizeOptions = {
@@ -25,9 +25,18 @@ const sizeOptions = {
 
 type SizeCategory = keyof typeof sizeOptions
 
+type ImageItem = {
+  id: string
+  type: 'existing' | 'new'
+  url?: string
+  file?: File
+  previewUrl?: string
+}
+
 export function ProductForm({ categories, brands, initialData }: { categories: any[], brands: any[], initialData?: any }) {
   const router = useRouter()
   const isEdit = !!initialData
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const getInitialSizeCategory = (): SizeCategory => {
     if (!initialData || !initialData.product_variants || initialData.product_variants.length === 0) return 'calzado'
@@ -38,11 +47,25 @@ export function ProductForm({ categories, brands, initialData }: { categories: a
     return 'calzado'
   }
 
+  const getInitialImages = (): ImageItem[] => {
+    if (!initialData?.product_images || initialData.product_images.length === 0) return []
+    // Ordenar para que la principal esté de primera
+    const sorted = [...initialData.product_images].sort((a: any, b: any) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+    return sorted.map((img: any) => ({
+      id: img.id || Math.random().toString(36).substring(2, 9),
+      type: 'existing',
+      url: img.image_url
+    }))
+  }
+
   const [sizeCategory, setSizeCategory] = useState<SizeCategory>(getInitialSizeCategory())
+  const [images, setImages] = useState<ImageItem[]>(getInitialImages())
   const [imageError, setImageError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
   // Estados Modal PIN
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [pinAction, setPinAction] = useState<'update' | 'delete' | null>(null)
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
@@ -51,48 +74,143 @@ export function ProductForm({ categories, brands, initialData }: { categories: a
   const initialSizes = isEdit ? initialData.product_variants.map((v: any) => v.size) : []
 
   useEffect(() => {
-    if (pin.length === 6 && pendingFormData) {
-      confirmUpdate()
+    // Verificamos que el PIN esté completo y haya una acción definida
+    if (pin.length === 6 && pinAction) {
+      // Si la acción es actualizar, exigimos que exista el formulario pendiente
+      if (pinAction === 'update' && !pendingFormData) return;
+      
+      // Ejecutamos la confirmación (ya sea update o delete)
+      confirmAction();
     }
-  }, [pin, pendingFormData])
+  }, [pin, pinAction, pendingFormData])
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const maxSize = 3 * 1024 * 1024
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
-
-    if (!allowedTypes.includes(file.type)) {
-      setImageError('Solo se permiten imágenes en formato .png, .jpg o .webp')
-      e.target.value = ''
-      return
-    }
-
-    if (file.size > maxSize) {
-      setImageError('El archivo es demasiado grande. El peso máximo es de 3 MB.')
-      e.target.value = ''
-      return
-    }
+  // Manejo de carga de archivos (Mín. 0, Máx. 4)
+  const handleFilesAdded = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
     setImageError(null)
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    const maxSize = 3 * 1024 * 1024 // 3 MB
+
+    const fileArray = Array.from(files)
+    const validFiles: File[] = []
+
+    for (const file of fileArray) {
+      if (!allowedTypes.includes(file.type)) {
+        setImageError('Solo se permiten imágenes en formato .png, .jpg o .webp')
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      if (file.size > maxSize) {
+        setImageError(`La imagen "${file.name}" supera el límite de 3 MB.`)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      validFiles.push(file)
+    }
+
+    if (images.length + validFiles.length > 4) {
+      setImageError('Solo puedes agregar un máximo de 4 imágenes por producto.')
+    }
+
+    const remainingSlots = 4 - images.length
+    const filesToAdd = validFiles.slice(0, remainingSlots)
+
+    const newItems: ImageItem[] = filesToAdd.map(file => ({
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'new',
+      file,
+      previewUrl: URL.createObjectURL(file)
+    }))
+
+    setImages(prev => [...prev, ...newItems])
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // Establecer una imagen como principal (mover al índice 0)
+  const makePrimary = (index: number) => {
+    if (index === 0) return
+    setImages(prev => {
+      const updated = [...prev]
+      const [selected] = updated.splice(index, 1)
+      return [selected, ...updated]
+    })
+  }
+
+  // Eliminar imagen
+  const removeImage = (index: number) => {
+    setImages(prev => {
+      const updated = [...prev]
+      const removed = updated.splice(index, 1)[0]
+      if (removed.previewUrl) {
+        URL.revokeObjectURL(removed.previewUrl)
+      }
+      return updated
+    })
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setImageError(null)
+
+    const formElement = e.currentTarget
+    const formData = new FormData(formElement)
+
+    formData.delete('images')
+    formData.delete('images_meta')
+
+    // Construir la metadata y adjuntar los archivos de imagen
+    const imagesMeta: Array<{ type: 'existing' | 'new', url?: string, fileIndex?: number }> = []
+    let fileIndex = 0
+
+    images.forEach(img => {
+      if (img.type === 'existing' && img.url) {
+        imagesMeta.push({ type: 'existing', url: img.url })
+      } else if (img.type === 'new' && img.file) {
+        imagesMeta.push({ type: 'new', fileIndex })
+        formData.append('images', img.file)
+        fileIndex++
+      }
+    })
+
+    formData.append('images_meta', JSON.stringify(imagesMeta))
+
     if (isEdit) {
-      e.preventDefault()
-      const formData = new FormData(e.currentTarget)
       setPendingFormData(formData)
+      setPinAction('update') // Especificamos que la acción es actualizar
       setIsModalOpen(true)
+    } else {
+      setIsSubmitting(true)
+      try {
+        await createProduct(formData)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setIsSubmitting(false)
+      }
     }
   }
 
-  const confirmUpdate = async () => {
-    if (!pendingFormData || !initialData) return
+  const handleDeleteRequest = () => {
+    setPinAction('delete') // Especificamos que la acción es eliminar
+    setIsModalOpen(true)
+  }
+
+  const confirmAction = async () => {
+    if (!initialData) return
     setIsVerifying(true)
     setPinError('')
 
-    const result = await updateProduct(initialData.id, pendingFormData, pin)
+    let result;
+
+    if (pinAction === 'update' && pendingFormData) {
+      result = await updateProduct(initialData.id, pendingFormData, pin)
+    } else if (pinAction === 'delete') {
+      result = await deleteProduct(initialData.id, pin)
+    } else {
+      return
+    }
 
     if (result.success) {
       closeModal()
@@ -108,6 +226,7 @@ export function ProductForm({ categories, brands, initialData }: { categories: a
   const closeModal = () => {
     setIsModalOpen(false)
     setPendingFormData(null)
+    setPinAction(null)
     setPin('')
     setPinError('')
   }
@@ -122,8 +241,7 @@ export function ProductForm({ categories, brands, initialData }: { categories: a
 
   return (
     <>
-      <form action={isEdit ? undefined : createProduct} onSubmit={handleSubmit} className="space-y-6">
-        
+      <form onSubmit={handleSubmit} className="space-y-6" encType="multipart/form-data">
         {/* Cabecera */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-zinc-200/80 shadow-sm">
           <div>
@@ -328,50 +446,111 @@ export function ProductForm({ categories, brands, initialData }: { categories: a
               </div>
             </div>
 
-            {/* Fotografía */}
+            {/* BLOQUE DE FOTOGRAFÍAS MULTI-IMAGEN (Mín 0, Máx 4) */}
             <div className="bg-white p-6 rounded-3xl border border-zinc-200/80 shadow-sm space-y-5">
-              <h2 className="text-sm font-bold flex items-center gap-2 text-zinc-800 border-b pb-3">
-                <ImageIcon size={16} className="text-zinc-400" /> Fotografía
-              </h2>
-              
-              <div className="space-y-4">
-                {isEdit && initialData?.product_images?.[0]?.image_url && (
-                  <div className="w-full aspect-square rounded-xl overflow-hidden border border-zinc-200 relative">
-                    <img src={initialData.product_images[0].image_url} alt="Imagen actual" className="w-full h-full object-cover" />
-                    <div className="absolute bottom-2 left-2 bg-black/70 backdrop-blur text-white text-[10px] font-bold px-2 py-1 rounded-md">Imagen Actual</div>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="image" className="text-xs font-bold text-zinc-600">{isEdit ? 'Reemplazar Imagen (Opcional)' : 'Imagen Principal'}</Label>
-                  <Input 
-                    id="image" 
-                    name="image" 
-                    type="file" 
-                    accept=".png, .jpg, .jpeg, .webp" 
-                    onChange={handleImageChange}
-                    required={!isEdit}
-                    className="cursor-pointer file:bg-zinc-100 file:text-zinc-700 file:text-xs file:font-bold file:border-0 file:rounded-lg file:px-3 file:py-1 file:mr-3 rounded-xl bg-zinc-50/50 h-auto py-2.5" 
-                  />
-                  {imageError ? (
-                    <p className="text-xs text-red-500 font-semibold flex items-center gap-1 pt-1">
-                      <AlertCircle size={14} /> {imageError}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-zinc-400">Formatos permitidos: .png, .jpg, .webp (Máx. 3 MB)</p>
-                  )}
-                </div>
+              <div className="flex items-center justify-between border-b pb-3">
+                <h2 className="text-sm font-bold flex items-center gap-2 text-zinc-800">
+                  <ImageIcon size={16} className="text-zinc-400" /> Fotografías ({images.length}/4)
+                </h2>
+                <span className="text-[11px] text-zinc-400 font-medium">Mín. 0 - Máx. 4</span>
               </div>
+              
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                La <strong>primera imagen</strong> agregada será la principal. Puedes cambiar la imagen principal haciendo clic en la estrella.
+              </p>
+
+              {/* Grid de imágenes seleccionadas */}
+              <div className="grid grid-cols-2 gap-3">
+                {images.map((img, idx) => (
+                  <div key={img.id} className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-200 group bg-zinc-50">
+                    <img 
+                      src={img.url || img.previewUrl} 
+                      alt={`Foto ${idx + 1}`} 
+                      className="w-full h-full object-cover" 
+                    />
+                    
+                    {/* Badge de Imagen Principal vs Secundaria */}
+                    {idx === 0 ? (
+                      <div className="absolute top-2 left-2 bg-black text-white text-[9px] font-black uppercase px-2 py-1 rounded-md flex items-center gap-1 shadow-md z-10">
+                        <Star size={10} className="fill-yellow-400 text-yellow-400" /> Principal
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => makePrimary(idx)}
+                        className="absolute top-2 left-2 bg-white/90 hover:bg-black hover:text-white text-zinc-700 text-[9px] font-bold px-2 py-1 rounded-md transition-colors shadow-sm flex items-center gap-1 z-10 opacity-90 group-hover:opacity-100"
+                        title="Convertir en imagen principal"
+                      >
+                        <Star size={10} /> Principal
+                      </button>
+                    )}
+
+                    {/* Botón Eliminar */}
+                    <button
+                      type="button"
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md transition-colors shadow-sm z-10"
+                      title="Eliminar imagen"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Botón de Agregar Foto si hay menos de 4 */}
+                {images.length < 4 && (
+                  <label className="border-2 border-dashed border-zinc-200 hover:border-zinc-400 bg-zinc-50/50 hover:bg-zinc-100/50 rounded-2xl aspect-square flex flex-col items-center justify-center gap-2 cursor-pointer transition-all">
+                    <div className="w-9 h-9 rounded-full bg-white shadow-sm border border-zinc-200 flex items-center justify-center text-zinc-600">
+                      <Plus size={18} />
+                    </div>
+                    <span className="text-xs font-bold text-zinc-600">Agregar foto</span>
+                    <input 
+                      ref={fileInputRef}
+                      type="file" 
+                      accept=".png, .jpg, .jpeg, .webp" 
+                      multiple
+                      onChange={handleFilesAdded}
+                      className="hidden" 
+                    />
+                  </label>
+                )}
+              </div>
+
+              {imageError && (
+                <p className="text-xs text-red-500 font-semibold flex items-center gap-1 pt-1">
+                  <AlertCircle size={14} /> {imageError}
+                </p>
+              )}
+
+              <p className="text-[11px] text-zinc-400">
+                Formatos permitidos: .png, .jpg, .webp (Máx. 3 MB por foto)
+              </p>
             </div>
 
             {/* Botón Guardar */}
-            <div className="pt-2">
+            {/* Botones de Acción */}
+            <div className="pt-2 space-y-3">
               <button 
                 type="submit" 
-                className="w-full h-12 rounded-2xl bg-black hover:bg-zinc-800 transition-all font-bold text-white shadow-lg shadow-black/10 flex items-center justify-center"
+                disabled={isSubmitting}
+                className="w-full h-12 rounded-2xl bg-black hover:bg-zinc-800 disabled:opacity-50 transition-all font-bold text-white shadow-lg shadow-black/10 flex items-center justify-center"
               >
-                {isEdit ? 'Guardar Cambios' : 'Crear Producto'}
+                {isSubmitting ? 'Guardando...' : (isEdit ? 'Guardar Cambios' : 'Crear Producto')}
               </button>
+
+              {isEdit && (
+                <button 
+                  type="button"
+                  onClick={handleDeleteRequest}
+                  disabled={isSubmitting}
+                  className="w-full h-12 rounded-2xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 disabled:opacity-50 transition-all font-bold shadow-sm flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={18} />
+                  Eliminar Producto
+                </button>
+              )}
             </div>
+            
 
           </div>
         </div>
@@ -386,9 +565,11 @@ export function ProductForm({ categories, brands, initialData }: { categories: a
               <X className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
 
-            <h3 className="text-lg sm:text-xl font-bold text-zinc-900 mb-1 mt-2 sm:mt-0">Autorizar Acción</h3>
+            <h3 className="text-lg sm:text-xl font-bold text-zinc-900 mb-1 mt-2 sm:mt-0">
+              {pinAction === 'delete' ? 'Eliminar Producto' : 'Autorizar Acción'}
+            </h3>
             <p className="text-xs sm:text-sm text-zinc-500 mb-6 sm:mb-8 text-center leading-relaxed">
-              Ingresa tu PIN de seguridad para guardar los cambios de: <br/>
+              Ingresa tu PIN de seguridad para {pinAction === 'delete' ? 'eliminar permanentemente' : 'guardar los cambios de'}: <br/>
               <span className="font-bold text-sm sm:text-base text-zinc-800">
                 "{initialData?.title}"
               </span>

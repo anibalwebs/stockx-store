@@ -15,49 +15,53 @@ import {
 export default async function HomePage() {
   const supabase = await createClient()
 
-  // 1. Consultar 4 productos NUEVOS que estén EN OFERTA
+  // 1. Consultar 4 productos NUEVOS que estén EN OFERTA y ACTIVOS
   const { data: newSaleProducts } = await supabase
     .from('products')
     .select(`
       id, title, slug, base_price, sale_price, gender,
-      product_images ( image_url )
+      product_images ( image_url, is_primary )
     `)
+    .eq('is_active', true)
     .not('sale_price', 'is', null)
     .order('id', { ascending: false }) // Ordenados por los últimos agregados
     .limit(4)
 
-  // 2. Consultar 4 productos MÁS BARATOS (Para la sección de abajo)
+  // 2. Consultar 4 productos MÁS BARATOS y ACTIVOS (Para la sección de abajo)
   const { data: cheapestProducts } = await supabase
     .from('products')
     .select(`
       id, title, slug, base_price, sale_price, gender,
-      product_images ( image_url )
+      product_images ( image_url, is_primary )
     `)
+    .eq('is_active', true)
     .order('base_price', { ascending: true })
     .limit(4)
 
-  // 3. Consultar Categorías Activas
+  // 3. Consultar Categorías ACTIVAS
   const { data: categoriesData } = await supabase
     .from('categories')
-    .select('name, slug')
+    .select('id, name, slug')
+    .eq('is_active', true)
     .order('name')
   
-  const categories = categoriesData || [
-    { name: 'Calzado', slug: 'calzado' }, 
-    { name: 'Ropa', slug: 'ropa' }, 
-    { name: 'Accesorios', slug: 'accesorios' }
+  const categories = categoriesData && categoriesData.length > 0 ? categoriesData : [
+    { id: '1', name: 'Calzado', slug: 'calzado' }, 
+    { id: '2', name: 'Ropa', slug: 'ropa' }, 
+    { id: '3', name: 'Accesorios', slug: 'accesorios' }
   ]
 
-  // 4. Consultar Marcas Activas
+  // 4. Consultar Marcas ACTIVAS
   const { data: brandsData } = await supabase
     .from('brands')
-    .select('name, slug')
+    .select('id, name, slug')
+    .eq('is_active', true)
     .order('name')
 
-  const brands = brandsData || [
-    { name: 'Nike', slug: 'nike' }, 
-    { name: 'Adidas', slug: 'adidas' }, 
-    { name: 'Puma', slug: 'puma' }
+  const brands = brandsData && brandsData.length > 0 ? brandsData : [
+    { id: '1', name: 'Nike', slug: 'nike' }, 
+    { id: '2', name: 'Adidas', slug: 'adidas' }, 
+    { id: '3', name: 'Puma', slug: 'puma' }
   ]
 
   return (
@@ -73,16 +77,16 @@ export default async function HomePage() {
           
           <div className="relative z-10 max-w-xl">
             <span className="inline-block py-1.5 px-4 rounded-full bg-white/10 text-xs font-bold tracking-widest uppercase mb-6 backdrop-blur-md border border-white/10 text-red-300">
-              Nueva Colección 2024
+              APROVECHA LAS OFERTAS
             </span>
             <h1 className="text-4xl md:text-6xl font-black tracking-tighter leading-[1.1] mb-5">
-              ELEVA TU <br/><span className="text-transparent bg-clip-text bg-linear-to-r from-red-500 to-red-400">ESTILO.</span>
+              DESCUENTOS DE<br/><span className="text-transparent bg-clip-text bg-linear-to-r from-red-500 to-red-400">10% Y 15%</span>
             </h1>
             <p className="text-zinc-300 text-sm md:text-base leading-relaxed mb-8 max-w-md">
-              Descubre la selección más exclusiva de sneakers y streetwear. Importación directa y piezas de edición limitada para destacar en cualquier lugar.
+              Contamos con descuento de 10% en todo nuestro calzado y 15% en toda la ropa, ven a visitarnos y aprovecha cualquiera de los descuento en cualquiera de nuestras sedes.
             </p>
             <Link href="/catalogo" className="inline-flex bg-white text-black font-bold py-3.5 px-8 rounded-full hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-              Explorar Catálogo
+              Ir al catalogo
             </Link>
           </div>
         </div>
@@ -105,8 +109,8 @@ export default async function HomePage() {
           </Link>
           {categories.map((cat) => (
             <Link 
-              href={`/categoria/${cat.slug}`} 
-              key={cat.slug}
+              href={`/catalogo?categoria=${cat.id}`} // <-- Cambiado aquí
+              key={cat.id} // <-- Usar cat.id en lugar de cat.slug
               className="whitespace-nowrap px-6 py-3 rounded-full text-sm font-semibold bg-white text-zinc-600 border border-zinc-200 hover:border-red-500 hover:text-red-600 hover:bg-red-50 transition-all shadow-sm"
             >
               {cat.name}
@@ -116,7 +120,7 @@ export default async function HomePage() {
       </section>
 
       {/* =========================================
-          3. NUEVOS EN OFERTA (Sección Solicitada)
+          3. NUEVOS EN OFERTA
       ========================================= */}
       {newSaleProducts && newSaleProducts.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 md:px-8 mb-10">
@@ -129,7 +133,10 @@ export default async function HomePage() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             {newSaleProducts.map((product) => {
-              const imageUrl = product.product_images?.[0]?.image_url || '/placeholder.png'
+              const imageUrl = product.product_images?.find(img => img.is_primary)?.image_url 
+                || product.product_images?.[0]?.image_url 
+                || '/placeholder.png'
+                
               const savings = (product.base_price - product.sale_price!).toFixed(0)
               
               return (
@@ -185,10 +192,10 @@ export default async function HomePage() {
             <div>
               <h3 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-3">
                 Paga con Cashea 
-                <span className="bg-black text-white text-[10px] px-2.5 py-1 rounded-md uppercase tracking-wider font-bold">Sin Interés</span>
+                <span className="bg-black text-white text-[10px] px-2.5 py-1 rounded-md uppercase tracking-wider font-bold">EN CUOTAS</span>
               </h3>
               <p className="text-zinc-800 text-sm md:text-base mt-1.5 font-medium leading-tight">
-                Lleva tus sneakers hoy y divide tu pago en cómodas cuotas quincenales.
+                Puedes hacer tu compra con nosotros desde Cashea sin tener que salir de casa, dependiendo del nivel que seas en Cashea podrás pagar en más cuotas o con una inicial menor.
               </p>
             </div>
           </div>
@@ -210,9 +217,15 @@ export default async function HomePage() {
         
         <div className="flex items-center gap-3 overflow-x-auto hide-scrollbar pb-2 md:flex-wrap">
           {brands.map((brand) => (
-            <Link href={`/marca/${brand.slug}`} key={brand.slug} className="shrink-0 w-32 h-14 bg-white rounded-xl border border-zinc-200 flex items-center justify-center shadow-sm hover:shadow-md hover:border-zinc-300 hover:-translate-y-0.5 transition-all">
-              <span className="font-black text-zinc-800 text-sm tracking-widest uppercase">{brand.name}</span>
-            </Link>
+          <Link 
+            href={`/catalogo?marca=${brand.id}`} // <-- Cambiado aquí
+            key={brand.id} 
+            className="shrink-0 px-6 h-14 bg-white rounded-xl border border-zinc-200 flex items-center justify-center shadow-sm hover:shadow-md hover:border-zinc-300 hover:-translate-y-0.5 transition-all"
+          >
+            <span className="font-black text-zinc-800 text-sm tracking-widest uppercase whitespace-nowrap">
+              {brand.name}
+            </span>
+          </Link>
           ))}
         </div>
       </section>
@@ -233,7 +246,12 @@ export default async function HomePage() {
         
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           {cheapestProducts?.map((product) => {
-            const imageUrl = product.product_images?.[0]?.image_url || '/placeholder.png'
+            // Buscar la imagen principal, o la primera, o el placeholder
+            const imageUrl = product.product_images?.find(img => img.is_primary)?.image_url 
+              || product.product_images?.[0]?.image_url 
+              || '/placeholder.png'
+              
+            // Lógica de descuentos intacta
             const hasDiscount = product.sale_price && product.sale_price < product.base_price
             const savings = hasDiscount ? (product.base_price - product.sale_price).toFixed(0) : 0
             
@@ -311,13 +329,13 @@ export default async function HomePage() {
             </div>
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <h4 className="text-lg font-black text-zinc-900">Sede Av. Bolívar</h4>
-                <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-md">Abierto</span>
+                <h4 className="text-lg font-black text-zinc-900">Av. Bolívar</h4>
+                <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-md">8:00AM A 7:00PM</span>
               </div>
               <p className="text-zinc-500 text-sm font-medium mb-4 leading-relaxed">
-                Nuestra tienda principal. Encuentra el inventario completo, accesorios y atención personalizada.
+                Nuestra tienda ubicada en Valencia, en la Av Bolivar Norte al frente del colegio Lourdes, ven a visitarnos.
               </p>
-              <a href="#" className="inline-flex items-center gap-1.5 text-sm font-bold text-red-600 hover:text-red-800 transition-colors">
+              <a href="https://maps.app.goo.gl/SSF7BfqHpHTxb6CW8" className="inline-flex items-center gap-1.5 text-sm font-bold text-red-600 hover:text-red-800 transition-colors">
                 <MapPin className="w-4 h-4" /> Ver en el mapa
               </a>
             </div>
@@ -330,13 +348,13 @@ export default async function HomePage() {
             </div>
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <h4 className="text-lg font-black text-zinc-900">Sede Guacara</h4>
-                <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-md">Abierto</span>
+                <h4 className="text-lg font-black text-zinc-900">Guacara</h4>
+                <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-md">9:00AM A 8:00PM</span>
               </div>
               <p className="text-zinc-500 text-sm font-medium mb-4 leading-relaxed">
                 Conoce nuestro nuevo espacio exclusivo en el centro de Guacara con modelos seleccionados.
               </p>
-              <a href="#" className="inline-flex items-center gap-1.5 text-sm font-bold text-red-600 hover:text-red-800 transition-colors">
+              <a href="https://maps.app.goo.gl/vpZsyTWwkVZzXSQ5A" className="inline-flex items-center gap-1.5 text-sm font-bold text-red-600 hover:text-red-800 transition-colors">
                 <MapPin className="w-4 h-4" /> Ver en el mapa
               </a>
             </div>
@@ -344,7 +362,6 @@ export default async function HomePage() {
 
         </div>
 
-        {/* Info de Envíos - Diseño Minimalista de Texto */}
         <div className="mt-8 pt-8 border-t border-zinc-200 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-10 text-center">
           <div className="flex items-center gap-3 text-zinc-700">
             <Truck className="w-5 h-5 text-zinc-400" />
@@ -376,15 +393,15 @@ export default async function HomePage() {
               <MessageCircle className="w-8 h-8" />
             </div>
             <div className="text-left">
-              <h2 className="text-2xl md:text-3xl font-black tracking-tight mb-2">¿Necesitas asesoría?</h2>
+              <h2 className="text-2xl md:text-3xl font-black tracking-tight mb-2">¿Ayuda con algo?</h2>
               <p className="text-green-50 text-sm md:text-base max-w-md font-medium leading-relaxed">
-                Escríbenos y te ayudamos a encontrar tu talla ideal, consultar stock y procesar tu compra de inmediato.
+                Escríbenos y te ayudamos a encontrar tu talla ideal o color, consultar stock y procesar tu compra de inmediato.
               </p>
             </div>
           </div>
           
           <a 
-            href="https://wa.me/584220384401" 
+            href="https://wa.me/584244601480" 
             target="_blank" 
             rel="noopener noreferrer"
             className="w-full md:w-auto bg-white text-[#25D366] font-black py-4 px-8 rounded-xl hover:scale-105 transition-transform flex justify-center items-center gap-2 shadow-md text-base relative z-10"
