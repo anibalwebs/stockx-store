@@ -123,7 +123,7 @@ export function CartDrawer() {
     const loadingToastId = toast.loading("Registrando tu pedido...")
 
     try {
-      const orderResult = await createOrder(items, total, deliveryMethod, paymentMethod)
+      const orderResult = await createOrder(items.map(({ product_id, size, quantity }) => ({ product_id, size, quantity })), deliveryMethod, paymentMethod)
 
       if (!orderResult.success) {
         toast.dismiss(loadingToastId)
@@ -140,7 +140,8 @@ export function CartDrawer() {
       
       let message = `¡Hola! 👋 Quiero realizar el pedido *#${shortId}*:\n\n`
       
-      items.forEach(item => {
+      const confirmedSavings = orderResult.subtotal - orderResult.total
+      orderResult.items.forEach(item => {
         message += `👟 *${item.title}*\n`
         message += `📏 Talla: ${item.size} | 🔢 Cantidad: ${item.quantity}\n`
         message += `💵 Precio unitario: $${item.price}\n`
@@ -150,16 +151,16 @@ export function CartDrawer() {
       message += `\n📦 *Método de entrega:* ${deliveryMethod}\n`
       message += `💳 *Método de pago:* ${paymentMethod}\n\n`
 
-      message += `📊 *Subtotal:* $${subtotal.toFixed(2)}\n`
+      message += `📊 *Subtotal:* $${orderResult.subtotal.toFixed(2)}\n`
       
-      if (savings > 0) {
-        message += `🎁 *¡Ahorraste: $${savings.toFixed(2)}!*\n\n`
+      if (confirmedSavings > 0) {
+        message += `🎁 *¡Ahorraste: $${confirmedSavings.toFixed(2)}!*\n\n`
       }
       
       message += `---------------------------\n`
-      message += `💰 *TOTAL A PAGAR:* $${total.toFixed(2)}\n`
+      message += `💰 *TOTAL A PAGAR:* $${orderResult.total.toFixed(2)}\n`
       if (exchangeRate) {
-        message += ` (Ref: Bs. ${totalBs.toFixed(2)})\n\n`
+        message += ` (Ref: Bs. ${(orderResult.total * exchangeRate).toFixed(2)})\n\n`
       } else {
         message += `\n\n`
       }

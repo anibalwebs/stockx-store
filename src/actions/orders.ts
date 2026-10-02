@@ -4,21 +4,23 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 
 interface CartItem {
-  id: string;
-  title: string;
+  product_id: string;
   size: string;
-  price: number;
-  base_price: number;
   quantity: number;
-  image: string;
 }
 
 export async function createOrder(
-  cartItems: CartItem[], 
-  totalAmount: number,
-  deliveryMethod: string, // <-- Nueva variable para el método de entrega
-  paymentMethod: string   // <-- Nueva variable para el método de pago
+  cartItems: CartItem[],
+  deliveryMethod: string,
+  paymentMethod: string
 ) {
+  if (!Array.isArray(cartItems) || cartItems.length === 0 || cartItems.length > 100 ||
+      cartItems.some(item => !item || typeof item.product_id !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.product_id) ||
+        typeof item.size !== 'string' || !item.size.trim() ||
+        !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100)) {
+    return { success: false as const, error: 'El carrito contiene productos o cantidades inválidas.' }
+  }
   // --- CAPA DE SEGURIDAD: COOLDOWN DE 1 MINUTO ---
   const cookieStore = await cookies()
   const lastOrderTime = cookieStore.get('last_order_time')
@@ -27,7 +29,7 @@ export async function createOrder(
     const timePassed = Date.now() - parseInt(lastOrderTime.value)
     if (timePassed < 60000) { // 60,000 milisegundos = 1 minuto
       return { 
-        success: false, 
+        success: false as const, 
         error: 'Por favor espera un minuto antes de hacer otro pedido para evitar spam.' 
       }
     }
@@ -36,40 +38,23 @@ export async function createOrder(
 
   const supabase = await createClient()
 
-  const shortId = `PED-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
-
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert([{ 
-      short_id: shortId,
-      total_amount: totalAmount,
-      status: 'Pendiente',
-      delivery_method: deliveryMethod || 'Por definir', // <-- Asignamos la variable
-      payment_method: paymentMethod || 'Por definir'    // <-- Asignamos la variable
-    }])
-    .select()
-    .single()
-
-  if (orderError || !order) {
-    console.error("Error al crear el pedido:", orderError?.message)
-    return { success: false, error: 'Hubo un error al registrar el pedido.' }
+  // The database validates catalog prices and writes header + lines atomically.
+  // No prices, titles, status or total supplied by the browser are accepted.
+  const { data, error } = await supabase.rpc('create_store_order', {
+    cart_items: cartItems.map(({ product_id, size, quantity }) => ({ product_id, size, quantity })),
+    delivery_method: deliveryMethod,
+    payment_method: paymentMethod,
+  })
+  if (error || !data) {
+    console.error('Error al registrar el pedido:', error?.code)
+    return { success: false as const, error: error?.code === 'P0001'
+      ? error.message : 'Hubo un error al registrar el pedido. Intenta nuevamente.' }
   }
-
-  const itemsToInsert = cartItems.map(item => ({
-    order_id: order.id,
-    title: item.title,
-    size: item.size,
-    quantity: item.quantity,
-    price: item.price
-  }))
-
-  const { error: itemsError } = await supabase
-    .from('order_items')
-    .insert(itemsToInsert)
-
-  if (itemsError) {
-    console.error("Error al guardar los items del pedido:", itemsError.message)
-    return { success: false, error: 'Hubo un error al registrar los productos.' }
+  const confirmed = data as {
+    shortId: string;
+    items: { title: string; size: string; quantity: number; price: number }[];
+    total: number;
+    subtotal: number;
   }
 
   // --- REGISTRAR LA COOKIE AL TENER ÉXITO ---
@@ -80,5 +65,5 @@ export async function createOrder(
   })
   // ------------------------------------------
 
-  return { success: true, shortId: shortId }
+  return { success: true as const, ...confirmed }
 }

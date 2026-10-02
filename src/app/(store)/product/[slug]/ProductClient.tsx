@@ -72,7 +72,8 @@ export default function ProductClient({ product, relatedProducts, saleProducts }
     }
 
     addItem({
-      id: `${product.title}-${selectedSize}`,
+      id: `${product.id}-${selectedSize}`,
+      product_id: product.id,
       title: product.title,
       size: selectedSize,
       price: currentPrice,
