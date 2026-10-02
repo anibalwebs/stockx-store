@@ -92,6 +92,10 @@ export function CartDrawer() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [confirmedOrder, setConfirmedOrder] = useState<{ code: string; url: string } | null>(null)
 
+  useEffect(() => useCartStore.subscribe((state) => {
+    if (state.items.length > 0) setConfirmedOrder(null)
+  }), [])
+
   useEffect(() => {
     const fetchExchangeRate = async () => {
       try {
@@ -223,7 +227,7 @@ export function CartDrawer() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {confirmedOrder && (
+          {confirmedOrder && items.length === 0 && (
             <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-5 space-y-4" role="status">
               <h2 className="font-bold text-lg text-zinc-900">¡Pedido registrado!</h2>
               <p className="text-sm text-zinc-700">Pedido #{confirmedOrder.code}. Abre WhatsApp para enviar los detalles y coordinar tu compra.</p>
