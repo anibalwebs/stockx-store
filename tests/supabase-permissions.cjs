@@ -7,7 +7,8 @@ const fs = require('node:fs')
 async function main() {
   const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
-  const report = { checks: [], orderCode: null }
+  const pending = process.env.TEST_PENDING_LOCKDOWN === '1'
+  const report = { checks: [], orderCode: null, directAccessLockdownPending: pending }
   const productId = randomUUID(), categoryId = randomUUID(), brandId = randomUUID(), imageId = randomUUID()
   const file = 'e2e/' + productId + '.png'
   function ok(result) { if (result.error) throw Error(result.error.message); return result.data }
@@ -16,13 +17,16 @@ async function main() {
     for (const table of ['products', 'product_variants', 'product_images', 'categories', 'brands']) {
       ok(await anon.from(table).select('*').limit(1))
     }
+    if (!pending) {
     for (const table of ['orders', 'order_items']) {
       assert.ok((await anon.from(table).select('*').limit(1)).error)
     }
     assert.ok((await anon.from('orders').insert({ short_id: 'FORGED-' + productId, total_amount: 1, status: 'Confirmado' })).error)
     assert.ok((await anon.from('order_items').insert({ title: 'FORGED', size: '42', quantity: 1, price: 1 })).error)
     assert.ok((await anon.from('orders').update({ status: 'Confirmado' }).eq('id', productId)).error)
-    report.checks.push('anonymous catalog reads allowed; direct order reads, inserts and updates denied')
+    report.checks.push('anonymous direct order reads, inserts and updates denied')
+    }
+    report.checks.push('anonymous catalog reads allowed')
     ok(await admin.from('categories').insert({ id: categoryId, name: 'E2E test', slug: 'e2e-' + categoryId }))
     ok(await admin.from('brands').insert({ id: brandId, name: 'E2E test', slug: 'e2e-' + brandId }))
     ok(await admin.from('products').insert({ id: productId, title: 'E2E test product', slug: 'e2e-' + productId, base_price: 100, sale_price: 80, is_active: true, category_id: categoryId, brand_id: brandId }))
@@ -47,10 +51,13 @@ async function main() {
     ok(await admin.from('orders').update({ status: 'Confirmado' }).eq('id', stored.id))
     const updated = ok(await admin.from('orders').select('status').eq('id', stored.id).single())
     assert.equal(updated.status, 'Confirmado')
+    if (!pending) {
     assert.ok((await admin.from('orders').update({ total_amount: 1 }).eq('id', stored.id)).error)
     assert.ok((await admin.from('orders').update({ status: 'Invalid' }).eq('id', stored.id)).error)
     assert.ok((await admin.from('orders').insert({ short_id: 'FORGED-' + productId, total_amount: 1, status: 'Pendiente' })).error)
-    report.checks.push('guest RPC creates catalog-priced order; admin reads lines and changes status; forged totals/status denied')
+    report.checks.push('forged totals/status and direct admin order inserts denied')
+    }
+    report.checks.push('guest RPC creates catalog-priced order; admin reads lines and changes status')
     const removed = ok(await admin.storage.from('product_images').remove([file]))
     assert.equal(removed.length, 1)
     ok(await admin.from('product_images').delete().eq('id', imageId))
