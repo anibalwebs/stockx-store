@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export type CartItem = {
+  product_id: string
   id: string 
   title: string
   size: string
