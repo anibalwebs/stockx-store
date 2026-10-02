@@ -175,7 +175,9 @@ export function CartDrawer() {
       const encodedMessage = encodeURIComponent(message)
 
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
+      const whatsappUrl = isMobile
+        ? `https://wa.me/${phoneNumber}?text=${encodedMessage}`
+        : `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`
 
       // Keep a retryable link to the saved order. Mobile app handoff must start
       // from a fresh user gesture, rather than an asynchronous Server Action.
@@ -243,7 +245,7 @@ export function CartDrawer() {
             </div>
           )}
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-zinc-500 space-y-4">
+            <div className={`flex flex-col items-center justify-center text-zinc-500 space-y-4 ${confirmedOrder ? 'py-8' : 'h-full'}`}>
               <svg className="w-20 h-20 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>

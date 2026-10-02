@@ -17,7 +17,7 @@ async function main() {
     for (const device of ['iPhone 13', 'Pixel 7', 'desktop']) {
       const mobile = device !== 'desktop'
       const context = await browser.newContext({ ...(mobile ? devices[device] : { viewport: { width: 1440, height: 1000 } }), ignoreHTTPSErrors: !!process.env.TEST_PROXY })
-      await context.route('https://wa.me/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>WhatsApp navigation captured</h1>' }))
+      await context.route(/https:\/\/(wa\.me|api\.whatsapp\.com)\//, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>WhatsApp navigation captured</h1>' }))
       const page = await context.newPage()
       page.on('pageerror', error => report.pageErrors.push(error.message))
       const errors = []
@@ -39,14 +39,19 @@ async function main() {
       const link = cart.getByRole('link', { name: 'Abrir WhatsApp', exact: true })
       await link.waitFor({ timeout: 45000 })
       const url = new URL(await link.getAttribute('href'))
-      assert.equal(url.origin, 'https://wa.me')
-      assert.equal(url.pathname, '/584244601480')
+      assert.equal(url.origin, mobile ? 'https://wa.me' : 'https://api.whatsapp.com')
+      assert.equal(url.pathname, mobile ? '/584244601480' : '/send')
+      if (!mobile) assert.equal(url.searchParams.get('phone'), '584244601480')
       const message = url.searchParams.get('text')
       report.orderCodes.push(message.match(/PED-[A-Z0-9]+/)[0])
       assert.ok(message.includes('TOTAL A PAGAR:* $36.99'))
       assert.ok(message.includes('👟 *Adidas Samba OG*'))
       await cart.getByText('Tu carrito está vacío', { exact: true }).waitFor()
       assert.equal(page.url(), productUrl)
+      const confirmationBox = await cart.getByRole('status').boundingBox()
+      const emptyBox = await cart.getByText('Tu carrito está vacío', { exact: true }).boundingBox()
+      assert.ok(emptyBox.y + emptyBox.height <= (await cart.boundingBox()).height, 'empty message fits below confirmation')
+      assert.ok(emptyBox.y - (confirmationBox.y + confirmationBox.height) < 200, 'empty message is close to confirmation')
       if (mobile) {
         assert.equal(context.pages().length, 1, 'no automatic mobile navigation')
         for (let attempt = 0; attempt < 2; attempt++) {
