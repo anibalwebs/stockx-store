@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test tests/order-pricing.test.cjs",
+    "test:e2e": "node tests/browser-checkout.cjs",
+    "test:permissions": "node tests/supabase-permissions.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -31,6 +34,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "playwright": "1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
