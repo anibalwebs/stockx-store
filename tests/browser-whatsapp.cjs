@@ -67,10 +67,15 @@ async function main() {
       report.checks.push(device + ': confirmed order, correct message, empty cart, retained store, WhatsApp handoff and no HTTP errors')
       if (mobile) {
         // A second order during cooldown fails; its cart must remain intact.
-        await page.goto(productUrl)
-        await page.getByRole('button', { name: '36', exact: true }).click()
+        await cart.getByRole('button').first().click()
         await page.getByRole('button', { name: 'Agregar al Carrito' }).click()
-        await selectOptions()
+        assert.equal(await cart.getByRole('link', { name: 'Abrir WhatsApp', exact: true }).count(), 0)
+        await cart.getByRole('button', { name: 'Quitar', exact: true }).click()
+        await cart.getByText('Tu carrito está vacío', { exact: true }).waitFor()
+        assert.equal(await cart.getByText('¡Pedido registrado!', { exact: true }).count(), 0)
+        await cart.getByRole('button').first().click()
+        await page.getByRole('button', { name: 'Agregar al Carrito' }).click()
+        report.checks.push(device + ': adding a new product clears the previous confirmation permanently')
         await cart.getByRole('button', { name: 'Pedir por WhatsApp', exact: true }).click()
         await page.getByText(/espera un minuto/i).waitFor()
         assert.equal(await cart.getByRole('button', { name: 'Quitar', exact: true }).count(), 1)
