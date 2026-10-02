@@ -90,6 +90,7 @@ export function CartDrawer() {
   const [paymentMethod, setPaymentMethod] = useState('')
   const [exchangeRate, setExchangeRate] = useState<number | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [confirmedOrder, setConfirmedOrder] = useState<{ code: string; url: string } | null>(null)
 
   useEffect(() => {
     const fetchExchangeRate = async () => {
@@ -169,21 +170,16 @@ export function CartDrawer() {
       
       const encodedMessage = encodeURIComponent(message)
 
-      // Detectamos si el usuario está navegando desde un dispositivo móvil
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-      
-      if (isMobile) {
-        // En móviles redirigimos en la misma pestaña con wa.me (evita bloqueos de Safari y abre la app nativa)
-        window.location.href = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`
-      } else {
-        // En PC abrimos WhatsApp Web directamente para evitar que la redirección rompa los emojis
-        const desktopUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`
-        window.open(desktopUrl, '_blank')
-      }
-      
-      // Limpia el carrito y cierra el panel lateral
+      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
+
+      // Keep a retryable link to the saved order. Mobile app handoff must start
+      // from a fresh user gesture, rather than an asynchronous Server Action.
+      setConfirmedOrder({ code: shortId, url: whatsappUrl })
       clearCart()
-      closeCart()
+      if (!isMobile) {
+        window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+      }
 
     } catch (error) {
       console.error("Error al redirigir a WhatsApp:", error)
@@ -227,6 +223,21 @@ export function CartDrawer() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {confirmedOrder && (
+            <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-5 space-y-4" role="status">
+              <h2 className="font-bold text-lg text-zinc-900">¡Pedido registrado!</h2>
+              <p className="text-sm text-zinc-700">Pedido #{confirmedOrder.code}. Abre WhatsApp para enviar los detalles y coordinar tu compra.</p>
+              <a
+                href={confirmedOrder.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-14 items-center justify-center rounded-md bg-green-600 px-4 py-3 font-bold text-white hover:bg-green-700"
+              >
+                Abrir WhatsApp
+              </a>
+              <p className="text-xs text-zinc-600">Si WhatsApp no se abre, vuelve a tocar el botón. Tu pedido ya está registrado.</p>
+            </div>
+          )}
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-zinc-500 space-y-4">
               <svg className="w-20 h-20 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
