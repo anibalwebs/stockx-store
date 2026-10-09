@@ -15,48 +15,46 @@ import {
 export default async function HomePage() {
   const supabase = await createClient()
 
-  // 1. Consultar 4 productos NUEVOS que estén EN OFERTA y ACTIVOS
-  const { data: newSaleProducts } = await supabase
-    .from('products')
-    .select(`
-      id, title, slug, base_price, sale_price, gender,
-      product_images ( image_url, is_primary )
-    `)
-    .eq('is_active', true)
-    .not('sale_price', 'is', null)
-    .order('id', { ascending: false }) // Ordenados por los últimos agregados
-    .limit(4)
-
-  // 2. Consultar 4 productos MÁS BARATOS y ACTIVOS (Para la sección de abajo)
-  const { data: cheapestProducts } = await supabase
-    .from('products')
-    .select(`
-      id, title, slug, base_price, sale_price, gender,
-      product_images ( image_url, is_primary )
-    `)
-    .eq('is_active', true)
-    .order('base_price', { ascending: true })
-    .limit(4)
+  // Independent catalog queries run concurrently, without caching prices.
+  const [{ data: newSaleProducts }, { data: cheapestProducts }, { data: categoriesData }, { data: brandsData }] = await Promise.all([
+    supabase
+      .from('products')
+      .select(`
+        id, title, slug, base_price, sale_price, gender,
+        product_images ( image_url, is_primary )
+      `)
+      .eq('is_active', true)
+      .not('sale_price', 'is', null)
+      .order('id', { ascending: false }) // Ordenados por los últimos agregados
+      .limit(4),
+    supabase
+      .from('products')
+      .select(`
+        id, title, slug, base_price, sale_price, gender,
+        product_images ( image_url, is_primary )
+      `)
+      .eq('is_active', true)
+      .order('base_price', { ascending: true })
+      .limit(4),
+    supabase
+      .from('categories')
+      .select('id, name, slug')
+      .eq('is_active', true)
+      .order('name'),
+    supabase
+      .from('brands')
+      .select('id, name, slug')
+      .eq('is_active', true)
+      .order('name')
+  ])
 
   // 3. Consultar Categorías ACTIVAS
-  const { data: categoriesData } = await supabase
-    .from('categories')
-    .select('id, name, slug')
-    .eq('is_active', true)
-    .order('name')
-  
+
   const categories = categoriesData && categoriesData.length > 0 ? categoriesData : [
     { id: '1', name: 'Calzado', slug: 'calzado' }, 
     { id: '2', name: 'Ropa', slug: 'ropa' }, 
     { id: '3', name: 'Accesorios', slug: 'accesorios' }
   ]
-
-  // 4. Consultar Marcas ACTIVAS
-  const { data: brandsData } = await supabase
-    .from('brands')
-    .select('id, name, slug')
-    .eq('is_active', true)
-    .order('name')
 
   const brands = brandsData && brandsData.length > 0 ? brandsData : [
     { id: '1', name: 'Nike', slug: 'nike' }, 
@@ -152,7 +150,7 @@ export default async function HomePage() {
                         alt={product.title}
                         fill
                         className="object-cover object-center group-hover:scale-110 transition-transform duration-700 ease-out"
-                        sizes="(max-width: 768px) 50vw, 25vw"
+                        sizes="(min-width: 1280px) 254px, (min-width: 1024px) calc(25vw - 66px), (min-width: 768px) calc(50vw - 76px), calc(50vw - 56px)"
                       />
                     </div>
                     <div className="px-1 flex flex-col flex-1 pb-1">
@@ -272,7 +270,7 @@ export default async function HomePage() {
                       alt={product.title}
                       fill
                       className="object-cover object-center group-hover:scale-110 transition-transform duration-700 ease-out"
-                      sizes="(max-width: 768px) 50vw, 25vw"
+                      sizes="(min-width: 1280px) 254px, (min-width: 1024px) calc(25vw - 66px), (min-width: 768px) calc(50vw - 76px), calc(50vw - 56px)"
                     />
                   </div>
 

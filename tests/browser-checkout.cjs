@@ -11,7 +11,7 @@ async function main() {
   let server, browser
   try {
     if (process.env.TEST_START_SERVER === '1') {
-      server = spawn('node', ['node_modules/next/dist/bin/next', 'dev', '--port', '3100', '--hostname', '127.0.0.1'], { env: { ...process.env, NODE_USE_ENV_PROXY: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
+      server = spawn('node', ['node_modules/next/dist/bin/next', process.env.TEST_SERVER_MODE === 'production' ? 'start' : 'dev', '--port', '3100', '--hostname', '127.0.0.1'], { env: { ...process.env, NODE_USE_ENV_PROXY: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
       await new Promise((resolve, reject) => { server.stdout.on('data', d => { if (d.toString().includes('Ready')) resolve() }); server.on('exit', c => reject(Error('Next exited: ' + c))) })
     }
     browser = await chromium.launch({ executablePath: process.env.TEST_BROWSER_PATH || undefined, proxy: process.env.TEST_PROXY ? { server: process.env.TEST_PROXY, bypass: '127.0.0.1,localhost' } : undefined, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] })
@@ -78,7 +78,7 @@ async function main() {
     await page.getByRole('heading', { name: 'Autorizar Acción' }).waitFor({ state: 'detached' })
     await row.getByRole('button', { name: 'Confirmado', exact: true }).waitFor()
     report.checks.push('admin login, order and line visibility, PIN-protected status update')
-    for (const path of ['/admin', '/admin/products', '/admin/categories', '/admin/products/new']) {
+    for (const path of ['/admin', '/admin/products', '/admin/categories', '/admin/products/new', '/admin/products/91793d69-9ba6-4c4a-933d-07f4608d19f2/edit']) {
       const response = await page.goto(base + path)
       assert.equal(response.status(), 200)
       await page.locator('main').waitFor()

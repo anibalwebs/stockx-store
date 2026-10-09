@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/store/cartStore'
-import { CartDrawer } from './CartDrawer'
+import { DeferredCart } from './DeferredCart'
 
 type Submenu = { name: string; href: string }
 type Category = {
@@ -62,7 +62,8 @@ export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [activeSubmenu, setActiveSubmenu] = useState<Category | null>(null)
 
-  const { openCart, items } = useCartStore()
+  const openCart = useCartStore(state => state.openCart)
+  const items = useCartStore(state => state.items)
   const totalItems = items.reduce((total, item) => total + item.quantity, 0)
 
   const closeMenu = () => {
@@ -280,7 +281,7 @@ export function Navbar() {
         </div>
       )}
 
-      <CartDrawer />
+      <DeferredCart />
     </>
   )
 }

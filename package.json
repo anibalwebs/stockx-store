@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/order-pricing.test.cjs",
+    "test": "node --test tests/*.test.cjs",
     "test:e2e": "node tests/browser-checkout.cjs",
     "test:permissions": "node tests/supabase-permissions.cjs"
   },
