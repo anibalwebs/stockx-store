@@ -22,29 +22,29 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     notFound()
   }
 
-  // 2. Buscar productos recomendados de la misma marca (excluyendo el actual)
-  const { data: relatedProducts } = await supabase
-    .from('products')
-    .select(`
-      title, slug, base_price, sale_price, gender,
-      brands ( name ),
-      product_images ( image_url, is_primary )
-    `)
-    .eq('brand_id', product.brand_id)
-    .neq('id', product.id)
-    .limit(4)
-
-  // 3. Buscar productos en oferta para la sección "Cashea" (excluyendo el actual)
-  const { data: saleProducts } = await supabase
-    .from('products')
-    .select(`
-      title, slug, base_price, sale_price, gender,
-      brands ( name ),
-      product_images ( image_url, is_primary )
-    `)
-    .not('sale_price', 'is', null)
-    .neq('id', product.id)
-    .limit(4)
+  // Recommendations and sale products are independent once the product is known.
+  const [{ data: relatedProducts }, { data: saleProducts }] = await Promise.all([
+    supabase
+      .from('products')
+      .select(`
+        title, slug, base_price, sale_price, gender,
+        brands ( name ),
+        product_images ( image_url, is_primary )
+      `)
+      .eq('brand_id', product.brand_id)
+      .neq('id', product.id)
+      .limit(4),
+    supabase
+      .from('products')
+      .select(`
+        title, slug, base_price, sale_price, gender,
+        brands ( name ),
+        product_images ( image_url, is_primary )
+      `)
+      .not('sale_price', 'is', null)
+      .neq('id', product.id)
+      .limit(4)
+  ])
 
   return (
     <div className="min-h-screen bg-white">

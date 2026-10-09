@@ -115,7 +115,7 @@ export default function ProductClient({ product, relatedProducts, saleProducts }
             alt={item.title} 
             fill 
             className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
-            sizes="(max-width: 768px) 50vw, 25vw"
+            sizes="(min-width: 1280px) 294px, (min-width: 768px) calc(25vw - 26px), calc(50vw - 24px)"
           />
           {item.sale_price && (
             <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider flex items-center gap-1 shadow-md z-10">
@@ -174,7 +174,7 @@ export default function ProductClient({ product, relatedProducts, saleProducts }
               fill
               className="object-cover object-center transition-opacity duration-300"
               priority
-              sizes="(max-width: 768px) 100vw, 50vw"
+              sizes="(min-width: 1280px) 600px, (min-width: 768px) calc(50vw - 40px), calc(100vw - 32px)"
             />
           </div>
           

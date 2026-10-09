@@ -3,7 +3,7 @@ import { useSearchParams } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { catalogQuery, catalogQueryKey, CATALOG_PAGE_SIZE, type CatalogProduct, type CatalogFilters } from '@/lib/catalog'
 import { 
   Search, SlidersHorizontal, X, ChevronLeft, ChevronRight, 
   Sparkles, Frown, Smartphone, MessageCircle, Truck, PackageCheck, Store, MapPin
@@ -11,132 +11,107 @@ import {
 
 type Brand = { id: string, name: string }
 type Category = { id: string, name: string }
-type Product = {
-  id: string
-  title: string
-  slug: string
-  base_price: number
-  sale_price: number | null
-  gender: string
-  product_type: string
-  product_images: { image_url: string, is_primary: boolean }[]
-  brands: { name: string } | null
-}
 
 export default function CatalogClient({ 
   initialBrands, 
-  initialCategories 
+  initialCategories, initialProducts, initialCount, initialFilters
 }: { 
   initialBrands: Brand[]
-  initialCategories: Category[] 
+  initialCategories: Category[]
+  initialProducts: CatalogProduct[] | null
+  initialCount: number
+  initialFilters: CatalogFilters
 }) {
-  const supabase = createClient()
   const searchParams = useSearchParams()
   const searchInputRef = useRef<HTMLInputElement>(null)
   
   // Estados de productos y paginación
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [totalCount, setTotalCount] = useState(0)
+  const [products, setProducts] = useState<CatalogProduct[]>(initialProducts || [])
+  const [loading, setLoading] = useState(initialProducts === null)
+  const [totalCount, setTotalCount] = useState(initialCount)
   const [page, setPage] = useState(1)
-  const ITEMS_PER_PAGE = 8
+  const ITEMS_PER_PAGE = CATALOG_PAGE_SIZE
 
   // Estados de filtros
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedBrands, setSelectedBrands] = useState<string[]>(
-    searchParams.get('marca') ? [searchParams.get('marca')!] : []
+    initialFilters.brands
   )
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    searchParams.get('categoria') ? [searchParams.get('categoria')!] : []
+    initialFilters.categories
   )
   const [selectedGenders, setSelectedGenders] = useState<string[]>(
-    searchParams.get('genero') ? [searchParams.get('genero')!] : []
+    initialFilters.genders
   )
   const [selectedStyles, setSelectedStyles] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState({ min: '', max: '' })
 
-  useEffect(() => {
-  // 1. Foco en buscador
-    if (searchParams.get('focus') === 'search' && searchInputRef.current) {
-      searchInputRef.current.focus()
-    }
-    const catParam = searchParams.get('categoria')
-    if (catParam) {
-      const matchedCat = initialCategories.find(
-        c => c.id === catParam || c.name.toLowerCase() === catParam.toLowerCase()
-      )
-      setSelectedCategories(matchedCat ? [matchedCat.id] : [catParam])
-    } else {
-      setSelectedCategories([])
-    }
-    const brandParam = searchParams.get('marca')
-    setSelectedBrands(brandParam ? [brandParam] : [])
-
-    // 4. Filtro de Género
-    const genderParam = searchParams.get('genero')
-    setSelectedGenders(genderParam ? [genderParam] : [])
-
+  const urlKey = JSON.stringify([searchParams.get('categoria'), searchParams.get('marca'), searchParams.get('genero')])
+  const [previousUrlKey, setPreviousUrlKey] = useState(urlKey)
+  // URL navigation resets only URL-driven filters, preserving the other controls.
+  if (previousUrlKey !== urlKey) {
+    setPreviousUrlKey(urlKey)
+    const category = searchParams.get('categoria')
+    const matched = initialCategories.find(c => c.id === category || c.name.toLowerCase() === category?.toLowerCase())
+    setSelectedCategories(category ? [matched?.id || category] : [])
+    const brand = searchParams.get('marca')
+    const gender = searchParams.get('genero')
+    setSelectedBrands(brand ? [brand] : [])
+    setSelectedGenders(gender ? [gender] : [])
     setPage(1)
-    }, 
-    [searchParams, initialCategories])
-    
+  }
+
+  useEffect(() => {
+    if (searchParams.get('focus') === 'search') searchInputRef.current?.focus()
+  }, [searchParams])
+
   // Estado UI
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
 
-  const fetchProducts = useCallback(async () => {
+  const filters: CatalogFilters = {
+    searchTerm, brands: selectedBrands, categories: selectedCategories,
+    genders: selectedGenders, styles: selectedStyles,
+    min: priceRange.min, max: priceRange.max,
+  }
+  const queryKey = catalogQueryKey(filters, page)
+  const seedQueryKey = useRef(initialProducts === null ? null : catalogQueryKey(initialFilters, 1))
+
+  const fetchProducts = useCallback(async (signal: AbortSignal) => {
     setLoading(true)
-    
-    let query = supabase
-      .from('products')
-      .select(`
-        id, title, slug, base_price, sale_price, gender, product_type,
-        brands ( name ),
-        product_images ( image_url, is_primary )
-      `, { count: 'exact' })
-      .eq('is_active', true)
-
-    if (searchTerm) query = query.ilike('title', `%${searchTerm}%`)
-
-    if (selectedBrands.length > 0) {
-      const validBrands = selectedBrands.filter(b => b !== 'null_brand')
-      const hasNullBrand = selectedBrands.includes('null_brand')
-
-      if (validBrands.length > 0 && hasNullBrand) {
-        query = query.or(`brand_id.in.(${validBrands.join(',')}),brand_id.is.null`)
-      } else if (validBrands.length > 0) {
-        query = query.in('brand_id', validBrands)
-      } else if (hasNullBrand) {
-        query = query.is('brand_id', null)
-      }
+    const filters: CatalogFilters = {
+      searchTerm, brands: selectedBrands, categories: selectedCategories,
+      genders: selectedGenders, styles: selectedStyles,
+      min: priceRange.min, max: priceRange.max,
     }
-
-    if (selectedCategories.length > 0) query = query.in('category_id', selectedCategories)
-    if (selectedGenders.length > 0) query = query.in('gender', selectedGenders)
-    if (selectedStyles.length > 0) query = query.in('product_type', selectedStyles)
-    if (priceRange.min) query = query.gte('base_price', priceRange.min)
-    if (priceRange.max) query = query.lte('base_price', priceRange.max)
-
-    const from = (page - 1) * ITEMS_PER_PAGE
-    const to = from + ITEMS_PER_PAGE - 1
-    query = query.range(from, to).order('created_at', { ascending: false })
-
-    const { data, count, error } = await query
-
+    const { createClient } = await import('@/lib/supabase/client')
+    if (signal.aborted) return
+    const { data, count, error } = await catalogQuery(createClient(), filters, page, signal)
+    if (signal.aborted) return
     if (!error && data) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setProducts(data as any)
+      setProducts(data as unknown as CatalogProduct[])
       setTotalCount(count || 0)
     }
     setLoading(false)
-  }, [page, searchTerm, selectedBrands, selectedCategories, selectedGenders, selectedStyles, priceRange, supabase])
+  }, [page, searchTerm, selectedBrands, selectedCategories, selectedGenders, selectedStyles, priceRange])
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchProducts()
+    // The server already loaded the initial page. Fetch only on filter changes.
+    if (seedQueryKey.current === queryKey) return
+    seedQueryKey.current = null
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      fetchProducts(controller.signal).catch(error => {
+        if (!controller.signal.aborted) {
+          console.error('Error al cargar el catálogo:', error)
+          setLoading(false)
+        }
+      })
     }, 300)
-
-    return () => clearTimeout(delayDebounceFn)
-  }, [fetchProducts])
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [fetchProducts, queryKey])
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage)
@@ -413,7 +388,7 @@ export default function CatalogClient({
                           alt={product.title} 
                           fill 
                           className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                          sizes="(max-width: 768px) 50vw, 25vw"
+                          sizes="(min-width: 1280px) 182px, (min-width: 1024px) calc(33vw - 166px), (min-width: 768px) calc(33vw - 64px), calc(50vw - 40px)"
                         />
                         {product.sale_price && (
                           <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider flex items-center gap-1 shadow-md z-10">
